@@ -3,7 +3,7 @@
 # Resultados y system specs guardados a disco
 # April 2025 
 
-SOFTWARE_LIST=("yoursoftware1" "yoursoftware2" "yoursoftware3")
+SOFTWARE_LIST=("ibm" "IBM" "db2" "DB2" "mq" "MQ" "api" "API" "Connect" "CONNECT" "Sterling" "STERLING")
 
 # Salidas a disco a current dir
 SOFTWARE_OUTPUT_FILE="software_inventory.txt"  # Software inventory
