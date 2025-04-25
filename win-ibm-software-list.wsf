@@ -1,95 +1,106 @@
-# Windows script to find installed software matching specific criteria
+# Windows script para listar swg instalado en un servidor
+# Necesita correr bajo Power Shell con usuario con Admin privileges
+# Resultados y system specs guardados a disco
+# April 2025 
 
-# Option 1: Search for a specific string
-$searchString = "IBM"  # Replace with your software name/pattern
+$softwareList = @("IBM", "mettle", "ibm", "api", "app", "db2", "cognos", "microsoft", "xbox", "MICROSOFT", "Microsoft", "Xbox")
 
-# Option 2: Use an array of software names to match against
-$softwareList = @("IBM" "mettle" "ibm", "api", "app", "db2", "cognos", "mq")
+$includeHKU = $true
 
-# Get installed software from registry (both 32-bit and 64-bit locations)
-$software = Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" `
-    -ErrorAction SilentlyContinue | 
-    Where-Object { $_.DisplayName } |
-    Select-Object DisplayNam
+# Registry paths para 64-bit, 32-bit, user software
+$registryPaths = @(
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    "HKCU:\Software\Wow6432Node\Windows\CurrentVersion\Uninstall\*"
+    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    "HKCU:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+)
 
-$software += Get-ItemProperty "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" `
-    -ErrorAction SilentlyContinue | 
-    Where-Object { $_.DisplayName } |
-    Select-Object DisplayName, DisplayVersion, Publisher, InstallDate
+if ($includeHKU) {
+    Write-Host "Get users: List SIDs - HKU..."
+    $userSIDs = Get-ChildItem -Path "HKU:\" -ErrorAction SilentlyContinue | 
+                Where-Object { $_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notlike '*_Classes' } | 
+                Select-Object -ExpandProperty PSChildName
+    foreach ($sid in $userSIDs) {
+        $registryPaths += "HKU:\$sid\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    }
+    Write-Host "Para $($userSIDs.Count) user SIDs for HKU search"
+}
 
-# Filter results - Choose ONE of these options:
+# Software de hives
+Write-Host "Querying software en $($registryPaths.Count) hives ..."
+$software = $registryPaths | ForEach-Object {
+    $path = $_
+    Write-Host "Procesando hive: $path"
+    Get-ItemProperty -Path $path -ErrorAction SilentlyContinue | 
+    Where-Object { $_.DisplayName } | 
+    Select-Object DisplayName, DisplayVersion, Publisher, InstallDate, @{Name="RegistryPath";Expression={$path}}
+} | Sort-Object DisplayName -Unique
 
-# Option 1: Filter by single string
-$filteredSoftware = $software | Where-Object { $_.DisplayName -like "*$searchString*" }
 
-# Option 2: Filter by list of software names
-# $filteredSoftware = $software | Where-Object { 
-#     $name = $_.DisplayName
-#     $softwareList | Where-Object { $name -like "*$_*" }
-# }
+#Matching vs software list 
+$filteredSoftware = $software | Where-Object { 
+    $name = $_.DisplayName
+    $softwareList | Where-Object { $name -like "*$_*" }
+}
 
-# Get current date for filename
-$date = Get-Date -Format "yyyyMMdd_HHmmss"
+$serverName = (Get-CimInstance -ClassName Win32_ComputerSystem).Name
+$serverName = $serverName -replace '[\\\/:*?"<>|]', '_'
 
-# Get server name
-$serverName = $env:COMPUTERNAME
-
-# Save results to a CSV file
-$outputFile = "C:\Temp\SoftwareInventory_$serverName_$date.csv"  # Adjust path as needed
+# Bajando software inventory
+Write-Host "Bajando software inventory a disco ..."
+$outputFile = "SoftwareInventory_$serverName.csv"  # Adjust path as needed
 $filteredSoftware | Export-Csv -Path $outputFile -NoTypeInformation
 
-Write-Host "Found $($filteredSoftware.Count) matching software installations"
-Write-Host "Results saved to: $outputFile"
+# Display results
+Write-Host "Se encontro $($filteredSoftware.Count) matching software "
+Write-Host "Bajando a: $outputFile"
 
+# System Specs
+Write-Host "System specs ..."
+$specsOutputFile = "SystemSpecs_$serverName.txt"  # Adjust path as needed
+$computerSystem = Get-CimInstance -ClassName Win32_ComputerSystem
+$os = Get-CimInstance -ClassName Win32_OperatingSystem
+$processor = Get-CimInstance -ClassName Win32_Processor | Select-Object -First 1
+$bios = Get-CimInstance -ClassName Win32_BIOS
 
-$outputFileSvr = "C:\Temp\Server_$serverName_$date.csv"  # Adjust path as needed
-# Create a string builder to collect all information
-$sb = New-Object System.Text.StringBuilder
+$specs = @"
+System Specifications
+--------------------
+Generated: $(Get-Date)
 
-# Get OS Information
-$os = Get-CimInstance Win32_OperatingSystem
-[void]$sb.AppendLine("=== Operating System Information ===")
-[void]$sb.AppendLine("OS Name: " + $os.Caption)
-[void]$sb.AppendLine("Version: " + $os.Version)
-[void]$sb.AppendLine("Build Number: " + $os.BuildNumber)
-[void]$sb.AppendLine("Install Date: " + $os.InstallDate)
-[void]$sb.AppendLine("Last Boot Time: " + $os.LastBootUpTime)
-[void]$sb.AppendLine("")
+System Model:
+$($computerSystem.Manufacturer) $($computerSystem.Model)
 
-# Get Processor Information
-$processors = Get-CimInstance Win32_Processor
-[void]$sb.AppendLine("=== Processor Information ===")
-[void]$sb.AppendLine("Number of Processors: " + $processors.Count)
-foreach ($proc in $processors) {
-    [void]$sb.AppendLine("Processor: " + $proc.Name)
-    [void]$sb.AppendLine("Manufacturer: " + $proc.Manufacturer)
-    [void]$sb.AppendLine("Max Clock Speed: " + $proc.MaxClockSpeed + " MHz")
-    [void]$sb.AppendLine("Number of Cores: " + $proc.NumberOfCores)
-    [void]$sb.AppendLine("Number of Logical Processors: " + $proc.NumberOfLogicalProcessors)
-    [void]$sb.AppendLine("Current Clock Speed: " + $proc.CurrentClockSpeed + " MHz")
-    [void]$sb.AppendLine("")
-}
+Computer Name:
+$($computerSystem.Name)
 
-# Get Memory Information
-$memory = Get-CimInstance Win32_ComputerSystem
-$physicalMemory = Get-CimInstance Win32_PhysicalMemory
-[void]$sb.AppendLine("=== Memory Information ===")
-[void]$sb.AppendLine("Total Physical Memory: " + [math]::Round($memory.TotalPhysicalMemory/1GB, 2) + " GB")
-[void]$sb.AppendLine("Number of Memory Modules: " + $physicalMemory.Count)
-foreach ($mem in $physicalMemory) {
-    [void]$sb.AppendLine("Memory Module: " + $mem.Capacity/1GB + " GB")
-    [void]$sb.AppendLine("Speed: " + $mem.Speed + " MHz")
-    [void]$sb.AppendLine("Manufacturer: " + $mem.Manufacturer)
-    [void]$sb.AppendLine("")
-}
+Processor Type:
+$($processor.Name)
 
-# Get Computer System Information
-$computer = Get-CimInstance Win32_ComputerSystem
-[void]$sb.AppendLine("=== System Information ===")
-[void]$sb.AppendLine("Computer Name: " + $computer.Name)
-[void]$sb.AppendLine("Manufacturer: " + $computer.Manufacturer)
-[void]$sb.AppendLine("Model: " + $computer.Model)
-[void]$sb.AppendLine("")
+Number of Physical Processors:
+$($computerSystem.NumberOfProcessors)
 
-# Save to file
-$sb.ToString() | Out-File $outputFileSvr
+Number of Logical Processors:
+$($computerSystem.NumberOfLogicalProcessors)
+
+Total Physical Memory:
+$([math]::Round($computerSystem.TotalPhysicalMemory / 1GB, 2)) GB
+
+Operating System:
+$($os.Caption) $($os.Version)
+
+Service Pack:
+$($os.ServicePackMajorVersion).$($os.ServicePackMinorVersion)
+
+BIOS Version:
+$($bios.SMBIOSBIOSVersion)
+"@
+
+# Save specs to file
+$specs | Out-File -FilePath $specsOutputFile -Encoding UTF8
+
+# Step 6: Completion
+Write-Host "System specifications bajadas a: $specsOutputFile"
+Write-Host "Done."

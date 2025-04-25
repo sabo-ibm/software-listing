@@ -5,12 +5,16 @@
 
 SOFTWARE_LIST=("ibm" "IBM" "db2" "DB2" "mq" "MQ" "api" "API" "Connect" "CONNECT" "Sterling" "STERLING")
 
+# Server name
+serverName=$(hostname)
+serverName=$(echo "$serverName" | tr '/:.*' '_')
+
 # Salidas a disco a current dir
-SOFTWARE_OUTPUT_FILE="software_inventory.txt"  # Software inventory
-SPECS_OUTPUT_FILE="system_specs.txt"          # System specifications
+SOFTWARE_OUTPUT_FILE="software_inventory_$serverName.txt"  # Software inventory
+SPECS_OUTPUT_FILE="system_specs_$serverName.txt"          # System specifications
 
 # Temp files
-TEMP_DIR="/tmp"
+TEMP_DIR="./"
 TEMP_FILE="${TEMP_DIR}/software_list_$$_$(date +%s).tmp"
 
 echo "Temp file..."
@@ -93,7 +97,7 @@ echo "Packages listos. Bajando a temp file."
 
 # Step 4: Filtering packages
 # Initialize output file
-echo "Matching criteria:" > "$SOFTWARE_OUTPUT_FILE"
+echo "Software instalado cumpliendo patrones:" > "$SOFTWARE_OUTPUT_FILE"
 echo "----------------------------------------" >> "$SOFTWARE_OUTPUT_FILE"
 echo "Package:Version" >> "$SOFTWARE_OUTPUT_FILE"
 

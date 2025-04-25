@@ -1,36 +1,43 @@
 #!/bin/bash
-# AIX script to find installed software matching specific criteria in Description
-# Uses lslpp -lc -a -q and queries the Description column
-# Saves machine specifications to a separate file
-# Compatible with AIX on Power
+# AIX script para listar swg instalado en un servidor
+# Basado en lslpp -lc -a -q queries Description 
+# Compatible con AIX on Power
+# Resultados y system specs guardados a disco
+# April 2025 
 
-# Array of software names to match against in Description
-SOFTWARE_LIST=("ibm" "IBM" "db2")
 
-# Output files
-SOFTWARE_OUTPUT_FILE="software_inventory.txt"  # Software inventory
-SPECS_OUTPUT_FILE="system_specs.txt"          # Machine specifications
+# software match vs description
+SOFTWARE_LIST=("ibm" "IBM" "db2" "DB2" "mq" "MQ" "api" "API" "Connect" "CONNECT" "Sterling" "STERLING")
 
-# Create temporary file for software list
-TEMP_DIR="/tmp"
+# Server name
+serverName=$(hostname)
+serverName=$(echo "$serverName" | tr '/:.*' '_')
+
+# Output files with server name
+SOFTWARE_OUTPUT_FILE="software_inventory_$serverName.txt"  # Software inventory
+SPECS_OUTPUT_FILE="system_specs_$serverName.txt"          # System specifications
+
+
+# temporary file software 
+TEMP_DIR="./"
 # Use process ID and timestamp for uniqueness
 TEMP_FILE="${TEMP_DIR}/software_list_$$_$(date +%s).tmp"
 
-# Ensure temporary file is unique and created
+# temporary file created
 if [ -f "$TEMP_FILE" ]; then
-    echo "Error: Temporary file $TEMP_FILE already exists. Please try again."
+    echo "Error: Temporal file $TEMP_FILE ya existe. Eliminar para continuar"
     exit 1
 fi
 touch "$TEMP_FILE" 2>/dev/null
 if [ $? -ne 0 ]; then
-    echo "Error: Failed to create temporary file $TEMP_FILE"
+    echo "Error: Imposible crear temp file $TEMP_FILE"
     exit 1
 fi
 
-# Ensure temporary file is removed on script exit
+# Remove temp on exit
 trap "rm -f $TEMP_FILE" EXIT
 
-# Function to check if a string matches any pattern in SOFTWARE_LIST
+# Match vs pattern SOFTWARE_LIST
 matches_list() {
     local name="$1"
     echo "Procesando: " "${name,,}"
@@ -43,17 +50,17 @@ matches_list() {
     return 1
 }
 
-# Check if lslpp is available
+# Check lslpp 
 if ! command -v lslpp >/dev/null 2>&1; then
     echo "Error: lslpp command not found. Is this an AIX system?"
     rm -f "$TEMP_FILE"
     exit 1
 fi
 
-# Get installed filesets using specified lslpp command
+# filesets con lslpp command
 lslpp -lc -a -q | awk -F: '{print $2 ":" $3 ":" $7}' > "$TEMP_FILE" 2>/dev/null
 
-# Check if lslpp command was successful
+# lslpp command 
 if [ $? -ne 0 ]; then
     echo "Error: Failed to retrieve software list with lslpp"
     rm -f "$TEMP_FILE"
@@ -61,31 +68,30 @@ if [ $? -ne 0 ]; then
 fi
 
 # Initialize software output file
-echo "Installed software matching criteria:" > "$SOFTWARE_OUTPUT_FILE"
+echo "Software instalado cumpliendo patrones :" > "$SOFTWARE_OUTPUT_FILE"
 echo "----------------------------------------" >> "$SOFTWARE_OUTPUT_FILE"
-echo "Fileset:Level:Description" >> "$SOFTWARE_OUTPUT_FILE"
+echo "Fileset:Level:Descricion" >> "$SOFTWARE_OUTPUT_FILE"
 
 
-# Option 2: Filter by list of software names in Description (comment out Option 1 and uncomment this)
- while read -r line; do
+while read -r line; do
      if matches_list "$line"; then
          echo "$line" >> "$SOFTWARE_OUTPUT_FILE"
      fi
- done < "$TEMP_FILE"
+done < "$TEMP_FILE"
 
 # Count matches
 match_count=$(($(wc -l < "$SOFTWARE_OUTPUT_FILE") - 3))
 
-echo "Found $match_count matching entries"
-echo "Software inventory saved to: $SOFTWARE_OUTPUT_FILE"
+echo "Se encontraron $match_count matchs"
+echo "Bajando inventario a: $SOFTWARE_OUTPUT_FILE"
 
 # Collect and save machine specifications
-echo "Collecting system specifications..."
+echo "System Specs ..."
 
 # Initialize specs output file
-echo "System Specifications" > "$SPECS_OUTPUT_FILE"
+echo "System Specs" > "$SPECS_OUTPUT_FILE"
 echo "--------------------" >> "$SPECS_OUTPUT_FILE"
-echo "Generated: $(date)" >> "$SPECS_OUTPUT_FILE"
+echo "Generado: $(date)" >> "$SPECS_OUTPUT_FILE"
 echo "" >> "$SPECS_OUTPUT_FILE"
 
 # Get system details using prtconf
@@ -123,7 +129,7 @@ if command -v prtconf >/dev/null 2>&1; then
         oslevel -r | awk '{print $1}' && oslevel -s | awk '{print "Service Pack: " $1}'
     } >> "$SPECS_OUTPUT_FILE" 2>/dev/null
 else
-    echo "Error: prtconf not found. Limited system specs collected." >> "$SPECS_OUTPUT_FILE"
+    echo "Error: prtconf no existe. System specs collected." >> "$SPECS_OUTPUT_FILE"
     {
         echo "Operating System Version:"
         oslevel -r | awk '{print $1}' && oslevel -s | awk '{print "Service Pack: " $1}'
@@ -132,7 +138,7 @@ fi
 
 # Check if specs were collected successfully
 if [ -s "$SPECS_OUTPUT_FILE" ]; then
-    echo "System specifications saved to: $SPECS_OUTPUT_FILE"
+    echo "System specifications bajados a: $SPECS_OUTPUT_FILE"
 else
-    echo "Error: Failed to collect system specifications"
+    echo "Error: Falla recolectando system specs"
 fi
